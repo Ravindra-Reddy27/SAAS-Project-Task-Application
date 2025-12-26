@@ -6,7 +6,6 @@ const generateToken = require('../utils/jwtGenerator');
 exports.registerTenant = async (req, res) => {
   const { tenantName, subdomain, adminEmail, adminPassword, adminFullName } = req.body;
   
-  // Validation
   if (!tenantName || !subdomain || !adminEmail || !adminPassword || !adminFullName) {
     return res.status(400).json({ success: false, message: 'All fields are required' });
   }
@@ -14,7 +13,7 @@ exports.registerTenant = async (req, res) => {
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN'); // Start Transaction
+    await client.query('BEGIN');
 
     // 1. Check if subdomain exists
     const subCheck = await client.query('SELECT id FROM tenants WHERE subdomain = $1', [subdomain]);
@@ -23,15 +22,11 @@ exports.registerTenant = async (req, res) => {
       return res.status(409).json({ success: false, message: 'Subdomain already exists' });
     }
 
-    // 2. Check if email exists (globally unique check for simplicity in registration, though per-tenant is allowed)
-    // Ideally we check per tenant, but for a NEW tenant registration, we just check if this email is already an admin elsewhere or logic specific.
-    // The spec says 409: Subdomain or email already exists.
-    
-    // 3. Hash Password
+    // 2. Hash Password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(adminPassword, salt);
 
-    // 4. Create Tenant (Default plan: free)
+    // 3. Create Tenant
     const tenantResult = await client.query(
       `INSERT INTO tenants (id, name, subdomain, status, subscription_plan, max_users, max_projects)
        VALUES (gen_random_uuid(), $1, $2, 'active', 'free', 5, 3)
@@ -40,7 +35,7 @@ exports.registerTenant = async (req, res) => {
     );
     const newTenant = tenantResult.rows[0];
 
-    // 5. Create Admin User
+    // 4. Create Admin User
     const userResult = await client.query(
       `INSERT INTO users (id, tenant_id, email, password_hash, full_name, role)
        VALUES (gen_random_uuid(), $1, $2, $3, $4, 'tenant_admin')
@@ -49,9 +44,8 @@ exports.registerTenant = async (req, res) => {
     );
     const newUser = userResult.rows[0];
 
-    await client.query('COMMIT'); // Commit Transaction
+    await client.query('COMMIT');
 
-    // Success Response
     res.status(201).json({
       success: true,
       message: 'Tenant registered successfully',
@@ -71,7 +65,7 @@ exports.registerTenant = async (req, res) => {
   }
 };
 
-// API 2: User Login
+// API 2: User Login (UPDATED FOR SUPER ADMIN)
 exports.login = async (req, res) => {
   const { email, password, tenantSubdomain } = req.body;
 
@@ -91,33 +85,46 @@ exports.login = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Tenant account is not active' });
     }
 
-    // 2. Find User in that Tenant
-    const userRes = await pool.query(
+    let user = null;
+
+    // 2. Attempt to find a Regular User or Tenant Admin in this tenant
+    const tenantUserRes = await pool.query(
       'SELECT * FROM users WHERE email = $1 AND tenant_id = $2', 
       [email, tenant.id]
     );
 
-    // Special handling for Super Admin (who has tenant_id NULL) logging into a specific tenant?
-    // Spec says: "Verify user belongs to that tenant". 
-    // Normal users must match tenant_id.
-    
-    if (userRes.rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    if (tenantUserRes.rows.length > 0) {
+      user = tenantUserRes.rows[0];
+    } else {
+      // 3. IF not found, check if it is a SUPER ADMIN (tenant_id is NULL)
+      const superAdminRes = await pool.query(
+        "SELECT * FROM users WHERE email = $1 AND role = 'super_admin' AND tenant_id IS NULL",
+        [email]
+      );
+      
+      if (superAdminRes.rows.length > 0) {
+        user = superAdminRes.rows[0];
+      }
     }
 
-    const user = userRes.rows[0];
+    // If still no user found
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
 
     if (!user.is_active) {
        return res.status(403).json({ success: false, message: 'Account suspended/inactive' });
     }
 
-    // 3. Verify Password
+    // 4. Verify Password
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    // 4. Generate Token
+    // 5. Generate Token
+    // Important: For Super Admin, tenantId will be null in the DB, 
+    // but the token payload can keep it null or we can ignore it.
     const token = generateToken(user.id, user.tenant_id, user.role);
 
     res.status(200).json({
@@ -128,10 +135,10 @@ exports.login = async (req, res) => {
           email: user.email,
           fullName: user.full_name,
           role: user.role,
-          tenantId: user.tenant_id
+          tenantId: user.tenant_id // This will be null for Super Admin
         },
         token,
-        expiresIn: 86400 // 24 hours in seconds
+        expiresIn: 86400
       }
     });
 
@@ -144,7 +151,6 @@ exports.login = async (req, res) => {
 // API 3: Get Current User
 exports.getMe = async (req, res) => {
   try {
-    // req.user comes from authMiddleware
     const { userId } = req.user;
 
     const query = `
@@ -172,14 +178,14 @@ exports.getMe = async (req, res) => {
         fullName: row.fullName,
         role: row.role,
         isActive: row.isActive,
-        tenant: {
+        tenant: row.tenantId ? {
           id: row.tenantId,
           name: row.tenantName,
           subdomain: row.subdomain,
           subscriptionPlan: row.subscriptionPlan,
           maxUsers: row.maxUsers,
           maxProjects: row.maxProjects
-        }
+        } : null // Super Admin has no tenant object
       }
     });
 
@@ -191,12 +197,6 @@ exports.getMe = async (req, res) => {
 
 // API 4: Logout
 exports.logout = async (req, res) => {
-  // Since we use JWT (Stateless), we just send success.
-  // In a real app with "audit_logs", we would insert a log record here.
-  
-  // Example Audit Log Insert (Placeholder logic)
-  // await pool.query('INSERT INTO audit_logs ...');
-
   res.status(200).json({
     success: true,
     message: 'Logged out successfully'
