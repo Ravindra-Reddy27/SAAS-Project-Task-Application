@@ -22,7 +22,7 @@ INSERT INTO users (
     '22222222-2222-2222-2222-222222222222',
     NULL,
     'superadmin@system.com',
-    '$2b$10$m2ZU1.KZ1P06DnR5f4qQw.fY72tOAeCw3E9y.d.uWvigffoHitX9m', -- Admin@123
+    '$2b$10$G9W4Lt3ASxF7LdwDYxyqKujHpsFiSZR1QRlYQRWhtZyCMcpIiNBjG', -- Admin@123
     'System Administrator',
     'super_admin'
 );
