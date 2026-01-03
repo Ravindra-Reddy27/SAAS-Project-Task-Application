@@ -93,9 +93,8 @@ database/
  │   ├── 003_create_projects.sql
  │   ├── 004_create_tasks.sql
  │   └── 005_create_audit_logs.sql
- ├── seeds/
- │   └── seed_data.sql
- └── init.sh    # Shell script to execute migrations and seeds on startup
+ └── seeds/
+     └── seed_data.sql
 ```
 
 **Purpose**
@@ -257,5 +256,6 @@ Services communicate using Docker service names:
 ---
 
 ## 9. Conclusion
+
 
 This technical specification defines a clean, scalable, and Docker-ready implementation strategy for the Multi-Tenant SaaS Platform. The defined project structure and setup ensure maintainability, security, and smooth evaluation using automated scripts.
