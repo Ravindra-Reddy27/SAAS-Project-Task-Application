@@ -1,11 +1,20 @@
-# Use a lightweight web server
-FROM nginx:alpine
+# Use Node.js 22 (Required for latest Vite)
+FROM node:22-alpine
 
-# Create a simple index file to prove it works
-RUN echo "<h1>Frontend is Running</h1>" > /usr/share/nginx/html/index.html
+# Set working directory
+WORKDIR /app
 
-# Expose the mandatory port 3000
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy app files
+COPY . .
+
+# Expose Vite's default port
 EXPOSE 3000
 
-# Configure nginx to listen on port 3000 instead of default 80
-RUN sed -i 's/80/3000/g' /etc/nginx/conf.d/default.conf
+# Start the app with --host so Docker can access it
+CMD ["npm", "run", "dev", "--", "--host"]
