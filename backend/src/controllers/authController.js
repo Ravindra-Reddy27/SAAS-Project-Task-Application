@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { pool } = require('../config/db');
 const generateToken = require('../utils/jwtGenerator');
 
@@ -65,7 +65,7 @@ exports.registerTenant = async (req, res) => {
   }
 };
 
-// API 2: User Login (UPDATED FOR SUPER ADMIN)
+// API 2: User Login (FIXED: Returns Tenant Name now)
 exports.login = async (req, res) => {
   const { email, password, tenantSubdomain } = req.body;
 
@@ -74,29 +74,11 @@ exports.login = async (req, res) => {
   }
 
   try {
-    // 1. Find Tenant
-    const tenantRes = await pool.query('SELECT id, status FROM tenants WHERE subdomain = $1', [tenantSubdomain]);
-    if (tenantRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Tenant not found' });
-    }
-    const tenant = tenantRes.rows[0];
-
-    if (tenant.status !== 'active') {
-      return res.status(403).json({ success: false, message: 'Tenant account is not active' });
-    }
-
     let user = null;
+    let tenantDetails = null;
 
-    // 2. Attempt to find a Regular User or Tenant Admin in this tenant
-    const tenantUserRes = await pool.query(
-      'SELECT * FROM users WHERE email = $1 AND tenant_id = $2', 
-      [email, tenant.id]
-    );
-
-    if (tenantUserRes.rows.length > 0) {
-      user = tenantUserRes.rows[0];
-    } else {
-      // 3. IF not found, check if it is a SUPER ADMIN (tenant_id is NULL)
+    // --- SUPER ADMIN BYPASS ---
+    if (tenantSubdomain.toLowerCase() === 'system') {
       const superAdminRes = await pool.query(
         "SELECT * FROM users WHERE email = $1 AND role = 'super_admin' AND tenant_id IS NULL",
         [email]
@@ -104,6 +86,30 @@ exports.login = async (req, res) => {
       
       if (superAdminRes.rows.length > 0) {
         user = superAdminRes.rows[0];
+      }
+    } else {
+      // --- STANDARD TENANT LOGIN ---
+      // 1. Find Tenant (FIX: Fetch 'name' as well)
+      const tenantRes = await pool.query('SELECT id, name, status FROM tenants WHERE subdomain = $1', [tenantSubdomain]);
+      if (tenantRes.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Tenant not found' });
+      }
+      const tenant = tenantRes.rows[0];
+
+      if (tenant.status !== 'active') {
+        return res.status(403).json({ success: false, message: 'Tenant account is not active' });
+      }
+
+      tenantDetails = { id: tenant.id, name: tenant.name }; // Capture name for response
+
+      // 2. Find User in this specific tenant
+      const tenantUserRes = await pool.query(
+        'SELECT * FROM users WHERE email = $1 AND tenant_id = $2', 
+        [email, tenant.id]
+      );
+
+      if (tenantUserRes.rows.length > 0) {
+        user = tenantUserRes.rows[0];
       }
     }
 
@@ -116,15 +122,13 @@ exports.login = async (req, res) => {
        return res.status(403).json({ success: false, message: 'Account suspended/inactive' });
     }
 
-    // 4. Verify Password
+    // 3. Verify Password
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    // 5. Generate Token
-    // Important: For Super Admin, tenantId will be null in the DB, 
-    // but the token payload can keep it null or we can ignore it.
+    // 4. Generate Token
     const token = generateToken(user.id, user.tenant_id, user.role);
 
     res.status(200).json({
@@ -135,7 +139,9 @@ exports.login = async (req, res) => {
           email: user.email,
           fullName: user.full_name,
           role: user.role,
-          tenantId: user.tenant_id // This will be null for Super Admin
+          tenantId: user.tenant_id,
+          // FIX: Return tenant object so Profile.jsx can show Organization Name immediately
+          tenant: tenantDetails 
         },
         token,
         expiresIn: 86400
@@ -185,7 +191,7 @@ exports.getMe = async (req, res) => {
           subscriptionPlan: row.subscriptionPlan,
           maxUsers: row.maxUsers,
           maxProjects: row.maxProjects
-        } : null // Super Admin has no tenant object
+        } : null 
       }
     });
 
