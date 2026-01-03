@@ -1,9 +1,16 @@
 const { pool } = require('../config/db');
 
+// Define Plan Limits configuration
+const PLAN_LIMITS = {
+  free: { maxUsers: 5, maxProjects: 3 },
+  pro: { maxUsers: 25, maxProjects: 15 },
+  enterprise: { maxUsers: 100, maxProjects: 50 }
+};
+
 // API 5: Get Tenant Details
 exports.getTenantDetails = async (req, res) => {
   const { tenantId } = req.params;
-  const { userId, role, tenantId: userTenantId } = req.user;
+  const { role, tenantId: userTenantId } = req.user;
 
   // Authorization: User must belong to this tenant OR be super_admin
   if (role !== 'super_admin' && userTenantId !== tenantId) {
@@ -50,11 +57,12 @@ exports.getTenantDetails = async (req, res) => {
   }
 };
 
-// API 6: Update Tenant
+// API 6: Update Tenant (FIXED: Automatic Limit Updates)
 exports.updateTenant = async (req, res) => {
   const { tenantId } = req.params;
   const { role } = req.user;
-  const { name, status, subscriptionPlan, maxUsers, maxProjects } = req.body;
+  // We accept basic fields. Note: We do NOT rely on maxUsers/maxProjects from body if plan is changing.
+  const { name, status, subscriptionPlan } = req.body;
 
   // Authorization: Only tenant_admin or super_admin
   if (role !== 'super_admin' && role !== 'tenant_admin') {
@@ -63,10 +71,9 @@ exports.updateTenant = async (req, res) => {
   
   // Authorization: Tenant Admin can ONLY update name
   if (role === 'tenant_admin') {
-      if (status || subscriptionPlan || maxUsers || maxProjects) {
+      if (status || subscriptionPlan) {
           return res.status(403).json({ success: false, message: 'Tenant admins can only update name' });
       }
-      // Verify they own this tenant
       if (req.user.tenantId !== tenantId) {
           return res.status(403).json({ success: false, message: 'Unauthorized to update this tenant' });
       }
@@ -88,12 +95,35 @@ exports.updateTenant = async (req, res) => {
             paramCount++;
         }
         
-        // Super Admin Only Fields
+        // Super Admin Logic
         if (role === 'super_admin') {
-            if (status) { updateFields.push(`status = $${paramCount}`); values.push(status); paramCount++; }
-            if (subscriptionPlan) { updateFields.push(`subscription_plan = $${paramCount}`); values.push(subscriptionPlan); paramCount++; }
-            if (maxUsers) { updateFields.push(`max_users = $${paramCount}`); values.push(maxUsers); paramCount++; }
-            if (maxProjects) { updateFields.push(`max_projects = $${paramCount}`); values.push(maxProjects); paramCount++; }
+            if (status) { 
+                updateFields.push(`status = $${paramCount}`); 
+                values.push(status); 
+                paramCount++; 
+            }
+            
+            // --- FIX START: Automatic Limit Updates based on Plan ---
+            if (subscriptionPlan) {
+                // 1. Update the plan field
+                updateFields.push(`subscription_plan = $${paramCount}`);
+                values.push(subscriptionPlan);
+                paramCount++;
+
+                // 2. Automatically lookup and set Limits if plan is valid
+                if (PLAN_LIMITS[subscriptionPlan]) {
+                    const { maxUsers, maxProjects } = PLAN_LIMITS[subscriptionPlan];
+                    
+                    updateFields.push(`max_users = $${paramCount}`);
+                    values.push(maxUsers);
+                    paramCount++;
+
+                    updateFields.push(`max_projects = $${paramCount}`);
+                    values.push(maxProjects);
+                    paramCount++;
+                }
+            }
+            // --- FIX END ---
         }
 
         if (updateFields.length === 0) {
@@ -108,7 +138,7 @@ exports.updateTenant = async (req, res) => {
             UPDATE tenants 
             SET ${updateFields.join(', ')}
             WHERE id = $${paramCount}
-            RETURNING id, name, updated_at
+            RETURNING id, name, subscription_plan, max_users, max_projects, updated_at
         `;
         values.push(tenantId);
 
@@ -131,11 +161,7 @@ exports.updateTenant = async (req, res) => {
         res.status(200).json({
             success: true,
             message: "Tenant updated successfully",
-            data: {
-                id: result.rows[0].id,
-                name: result.rows[0].name,
-                updatedAt: result.rows[0].updated_at
-            }
+            data: result.rows[0]
         });
 
     } catch (err) {
@@ -152,7 +178,6 @@ exports.updateTenant = async (req, res) => {
 
 // API 7: List All Tenants
 exports.listTenants = async (req, res) => {
-    // Authorization: Super Admin ONLY
     if (req.user.role !== 'super_admin') {
         return res.status(403).json({ success: false, message: 'Not authorized. Super Admin only.' });
     }
@@ -161,7 +186,6 @@ exports.listTenants = async (req, res) => {
     const offset = (page - 1) * limit;
 
     try {
-        // Build Filter Query
         let whereClause = 'WHERE 1=1';
         let values = [];
         let paramCount = 1;
@@ -177,9 +201,9 @@ exports.listTenants = async (req, res) => {
             paramCount++;
         }
 
-        // Main Query with Counts
         const query = `
-            SELECT t.id, t.name, t.subdomain, t.status, t.subscription_plan as "subscriptionPlan", t.created_at as "createdAt",
+            SELECT t.id, t.name, t.subdomain, t.status, t.subscription_plan as "subscriptionPlan", 
+            t.max_users as "maxUsers", t.max_projects as "maxProjects", t.created_at as "createdAt",
             (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) as "totalUsers",
             (SELECT COUNT(*) FROM projects p WHERE p.tenant_id = t.id) as "totalProjects"
             FROM tenants t
@@ -190,7 +214,6 @@ exports.listTenants = async (req, res) => {
         
         const countQuery = `SELECT COUNT(*) FROM tenants ${whereClause}`;
 
-        // Execute queries
         const listValues = [...values, limit, offset];
         const tenantsRes = await pool.query(query, listValues);
         const totalRes = await pool.query(countQuery, values);
