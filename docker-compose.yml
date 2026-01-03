@@ -12,11 +12,20 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
-      # Mount the init script to the special entrypoint folder
-      - ./database/init.sh:/docker-entrypoint-initdb.d/init.sh
-      # Mount migrations and seeds to subfolders so the script can find them
-      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
-      - ./database/seeds:/docker-entrypoint-initdb.d/seeds
+      
+      # --- THE FIX ---
+      # 1. Mount the Migration file directly (Run this first)
+  
+      - ./database/migrations/001_create_tenants.sql:/docker-entrypoint-initdb.d/001_create_tenants.sql
+      - ./database/migrations/002_create_users.sql:/docker-entrypoint-initdb.d/002_create_users.sql
+      - ./database/migrations/003_create_projects.sql:/docker-entrypoint-initdb.d/003_create_projects.sql
+      - ./database/migrations/004_create_tasks.sql:/docker-entrypoint-initdb.d/004_create_tasks.sql
+      - ./database/migrations/005_create_audit_logs.sql:/docker-entrypoint-initdb.d/005_create_audit_logs.sql
+      # 2. Mount the Seed file directly (Run this second)
+      # This keeps your file in 'database/seeds' on your machine but puts it where Postgres sees it.
+      - ./database/seeds/seed_data.sql:/docker-entrypoint-initdb.d/02_seed_data.sql
+      
+      # REMOVED: init.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
