@@ -11,4 +11,7 @@ router.patch('/:taskId/status', taskController.updateTaskStatus);
 // API 19: Full Update
 router.put('/:taskId', taskController.updateTask);
 
+// API 20: Delete Task (This is required for the controller to work)
+router.delete('/:taskId', taskController.deleteTask);
+
 module.exports = router;

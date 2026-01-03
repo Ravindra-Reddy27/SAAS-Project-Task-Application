@@ -5,9 +5,8 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 router.use(authMiddleware);
 
-// API 10 & 11 (General User Operations)
-router.put('/:userId', userController.updateUser);
-router.delete('/:userId', userController.deleteUser);
+// GET /api/users/me is usually handled in authRoutes, but we handle updates/deletes here
+router.put('/:id', userController.updateUser);
+router.delete('/:id', userController.deleteUser);
 
-// Note: API 8 & 9 are mounted in index.js under /api/tenants/:tenantId/users
 module.exports = router;
