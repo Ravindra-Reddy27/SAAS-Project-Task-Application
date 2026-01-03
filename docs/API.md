@@ -1106,7 +1106,7 @@ curl -X POST http://localhost:5000/api/projects/PROJECT_ID/tasks \
 2. Open Postman.
 3. Add variables:
    - `base_url`: `http://localhost:5000/api`
-   - `token`: (will be set automatically after login)
+   - `token`: (after login set the token)
 4. Run "Register Tenant" and "Login" request.
 5. Token will be automatically saved to environment.
 6. All subsequent requests will use this token.
@@ -1119,3 +1119,4 @@ Follow this recommended sequence:
 5. ✅ Create Task (API 16)
 6. ✅ Get All Projects (API 13)
 7. ✅ Update Task Status (API 18)
+
