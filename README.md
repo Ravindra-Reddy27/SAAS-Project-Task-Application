@@ -63,32 +63,14 @@ git clone https://github.com/Ravindra-Reddy27/SAAS-Project-Task-Application.git
 cd SAAS-Project-Task-Application
 ```
 
-### **Step 2: Environment Configuration**
-
-The project comes with default development settings. Ensure you have the following .env file in your backend directory (or rely on docker-compose.yml defaults):
-
-**Backend (backend/.env):**
-```ini
-PORT=5000
-NODE_ENV=development
-DB_HOST=database
-DB_PORT=5432
-DB_NAME=saas_db
-DB_USER=postgres
-DB_PASSWORD=postgres
-JWT_SECRET=super_secret_key_for_testing_only_12345
-JWT_EXPIRES_IN=24h
-FRONTEND_URL=http://frontend:3000
-```
-
-### **Step 3: Start the Application**
+### **Step 2: Start the Application**
 
 Run the entire stack with a single command. This handles building images, creating networks, and starting services.
 ```bash
-docker-compose up -d --build
+docker-compose up -d 
 ```
 
-### **Step 4: Database Initialization (Migrations & Seeds)**
+### **Step 3: Database Initialization (Migrations & Seeds)**
 
 **Automated Process:**
 
@@ -100,6 +82,30 @@ The Docker setup is configured to automatically run migrations and seed data whe
 No manual command is required. You can verify this by checking the logs:
 ```bash
 docker-compose logs database
+```
+
+### **Step 4: Troubleshooting Common Docker Issues**
+
+Corrupted Build Cache: If your build fails with errors like `failed to prepare extraction snapshot` or `parent snapshot does not exist`, your Docker builder cache is likely corrupted.
+* Fix: You must prune the builder cache and force a clean build.
+Run the following commands in order:
+Bash
+
+```
+docker builder prune -a
+docker-compose build --no-cache
+docker-compose up -d
+
+```
+
+Database Volume Reset: If the database fails to initialize or you need to re-run migrations/seeds from scratch, you must delete the existing data volume.
+* Action: The `-v` flag removes volumes, ensuring a fresh start on the next `up` command.
+Bash
+
+```
+docker-compose down -v
+docker-compose up -d --build
+
 ```
 
 ---
@@ -157,4 +163,5 @@ The backend exposes the following main RESTful endpoints:
 * `POST /api/projects` - Create a new project.
 * `GET /api/projects/:id/tasks` - List tasks for a specific project.
 * `POST /api/projects/:id/tasks` - Create a task.
+
 * `PATCH /api/tasks/:id/status` - Update task status.
