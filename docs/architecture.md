@@ -72,7 +72,7 @@ The high-level architecture diagram illustrates:
 
 📌 **Diagram file location:** `docs/images/system-architecture.png`
 
-[![System Architecture Diagram](docs/images/system-architecture.png)](docs/images/system-architecture.png)
+[![System Architecture Diagram](images/system-architecture.png)](images/system-architecture.png)
 *(Click image to enlarge)*
 
 ---
@@ -166,7 +166,7 @@ The ERD shows:
 
 📌 **ERD file location:** `docs/images/database-erd.png`
 
-[![ Entity Relationship Diagram ](docs/images/database-erd.png)](docs/images/database-erd.png)
+[![ Entity Relationship Diagram ](images/database-erd.png)](images/database-erd.png)
 *(Click image to enlarge)*
 
 
