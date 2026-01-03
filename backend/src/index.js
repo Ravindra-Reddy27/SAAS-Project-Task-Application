@@ -1,13 +1,17 @@
 const express = require('express');
 const cors = require('cors');
+const { pool } = require('./config/db'); 
 require('dotenv').config();
 
 const app = express();
 
 // Middleware
 app.use(express.json());
+// --- CORS CONFIGURATION ---
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000'
+  origin: true, // This allows ANY origin (localhost:3000, 127.0.0.1, etc.)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
 }));
 
 // --- IMPORT ROUTE FILES ---
@@ -17,7 +21,7 @@ const userRoutes = require('./routes/userRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 
-// --- IMPORT CONTROLLERS & MIDDLEWARE (For Nested Routes) ---
+// --- IMPORT CONTROLLERS & MIDDLEWARE ---
 const userController = require('./controllers/userController');
 const taskController = require('./controllers/taskController');
 const authMiddleware = require('./middleware/authMiddleware');
@@ -47,12 +51,21 @@ app.use('/api/projects/:projectId/tasks', projectTaskRouter);
 
 // --- HEALTH CHECK ---
 app.get('/api/health', async (req, res) => {
-  const db = require('./config/db');
   try {
-    await db.pool.query('SELECT 1');
-    res.status(200).json({ status: 'ok', database: 'connected' });
+    // Check DB connection
+    await pool.query('SELECT 1'); // Now 'pool' is defined!
+    res.status(200).json({ 
+      status: 'ok', 
+      database: 'connected', 
+      timestamp: new Date().toISOString() 
+    });
   } catch (err) {
-    res.status(500).json({ status: 'error', database: 'disconnected' });
+    console.error("Health Check Failed:", err);
+    res.status(500).json({ 
+      status: 'error', 
+      database: 'disconnected', 
+      timestamp: new Date().toISOString() 
+    });
   }
 });
 
